@@ -1,0 +1,120 @@
+global:
+  image:
+    repository: camptocamp/argocd
+    tag: "v2.3.1_c2c.1"
+  securityContext: # Set deployments securityContext/fsGroup to 999 so that user of the docker image can actually use IAM Authenticator. We need this because the IAM Authenticator will try mount a secret on /var/run/secrets/eks.amazonaws.com/serviceaccount/token. If the correct fsGroup (999 corresponds to the argocd user) isn’t set, this will fail.
+    runAsGroup: 999
+    fsGroup: 999
+
+
+controller:
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 512Mi
+  serviceAccount:
+    create: true
+    name: argocd-application-controller
+    annotations: {eks.amazonaws.com/role-arn: arn:aws:iam::111111111111:role/argocd-management} # irsa arn of management account
+    automountServiceAccountToken: true
+
+
+server:
+  serviceAccount:
+    create: true
+    name: argocd-server
+    annotations: {eks.amazonaws.com/role-arn: arn:aws:iam::111111111111:role/argocd-management} # irsa arn of management account
+    automountServiceAccountToken: true
+  ingress:
+    enabled: true
+    annotations:
+      kubernetes.io/ingress.class: alb
+      alb.ingress.kubernetes.io/scheme: internet-facing
+      alb.ingress.kubernetes.io/target-type: ip
+      alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS":443}]'
+      alb.ingress.kubernetes.io/ssl-redirect: '443'
+      alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:eu-central-1:655244194110:certificate/bc0b47ae-d01f-48bb-9467-94c17a4f8b85
+      alb.ingress.kubernetes.io/backend-protocol: HTTPS
+      alb.ingress.kubernetes.io/healthcheck-protocol: HTTPS
+    hosts:
+     - argocd.management.naim.run
+  config:
+    url: https://argocd.management.naim.run
+    application.instanceLabelKey: argocd.argoproj.io/instance
+    repositories: |
+      - type: git
+        url: http://gitea-http.gitea.svc.cluster.local:3000/naim.run/eks-addons
+        name: eks-addons
+        usernameSecret:
+          name: argocd-repository-credentials
+          key: naim_run_git_username
+        passwordSecret:
+          name: argocd-repository-credentials
+          key: naim_run_git_password
+      - type: git
+        url: http://gitea-http.gitea.svc.cluster.local:3000/naim.run/monitoring
+        name: monitoring
+        usernameSecret:
+          name: argocd-repository-credentials
+          key: naim_run_git_username
+        passwordSecret:
+          name: argocd-repository-credentials
+          key: naim_run_git_password
+    oidc.config: |
+      name: Keycloak
+      issuer: https://sso.naim.run/auth/realms/devops
+      clientID: argocd
+      clientSecret: $oidc.keycloak.clientSecret
+      requestedIDTokenClaims:
+        groups:
+          essential: true
+      requestedScopes:
+        - openid
+        - profile
+        - email
+        - groups
+
+  rbacConfig:
+    policy.default: role:readonly
+    policy.csv: |
+      p, role:developer, applications, *, application/*, allow
+      p, role:developer, clusters, get, *, allow
+      p, role:developer, repositories, get, *, allow
+      p, role:developer, repositories, create, *, allow
+      p, role:developer, repositories, update, *, allow
+      p, role:developer, repositories, delete, *, allow
+      p, role:devops, applications, *, */*, allow
+      p, role:devops, clusters, get, *, allow
+      p, role:devops, repositories, get, *, allow
+      p, role:devops, repositories, create, *, allow
+      p, role:devops, repositories, update, *, allow
+      p, role:devops, repositories, delete, *, allow
+      g, Admin, role:admin
+      g, DevOps, role:devops
+      g, Developer, role:developer
+
+
+configs:
+  clusterCredentials:
+    - name: development
+      server: https://AF5F65626E30DF4E3446E812B66C6683.gr7.eu-central-1.eks.amazonaws.com # EKS cluster API server endpoint
+      config:
+        awsAuthConfig:
+          clusterName: eks-development
+          roleARN: arn:aws:iam::222222222222:role/deployer # Deployer role arn of development account
+        tlsClientConfig:
+          caData: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUM1ekNDQWMr........==" # EKS cluster certificate authority
+    - name: staging
+      server: https://CB71D931AA724A366ACCC2AC75F46753.gr7.eu-central-1.eks.amazonaws.com # EKS cluster API server endpoint
+      config:
+        awsAuthConfig:
+          clusterName: eks-staging
+          roleARN: arn:aws:iam::333333333333:role/deployer # Deployer role arn of staging account
+        tlsClientConfig:
+          caData: "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSUM1ekNDQWMr........==" # EKS cluster certificate authority
+
+
+notifications:
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 999
