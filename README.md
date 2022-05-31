@@ -140,4 +140,4 @@ helm secrets edit secrets.yaml
 - [Create aws irsa on management account](management-account/irsa)
 - [Deploy argocd on management eks cluster](management-account/argocd)
 - [Create iam role on development account](development-account/iam-role)
-- [Map IAM role with cluster role](development-account/rbac)
+- [Map iam role with eks cluster role](development-account/rbac)
