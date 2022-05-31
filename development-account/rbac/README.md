@@ -1,4 +1,4 @@
-EKS cluster use IAM users or roles to control access to the cluster. Lets map `deployer` IAM role with EKS cluster role.
+EKS cluster uses IAM user/role to access the cluster. Therefore, let's map the `deployer` IAM role with the EKS cluster role so that the `deployer` role gets cluster admin access.
 
 ```bash
 $EKS_CLUSTER_NAME=development
